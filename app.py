@@ -1,4 +1,10 @@
 import gradio as gr 
+import spaces
+
+@spaces.GPU
+def gpu_test():
+    return "GPU available"
+
 
 with gr.Blocks(title="RoPE Explorer") as demo: 
     with gr.Tabs(): 
