@@ -1,0 +1,7 @@
+services:
+  rope-explorer:
+    build: .
+    ports:
+      - "7860:7860"
+    volumes:
+      - .:/app
