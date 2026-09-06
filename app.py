@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 import plotly.graph_objects as go
 import gradio as gr
+import spaces 
 
 from src.absolute_pe import add_positional_encoding
 from src.extract import (
@@ -80,6 +81,9 @@ PLACEHOLDER = go.Figure().update_layout(
     height=320,
 )
 
+@spaces.GPU
+def gpu_test():
+    return "GPU available"
 
 def _safe_slider_max(n: int) -> int:
     """Gradio sliders need max > min; keep a one-step range even at edge cases."""
