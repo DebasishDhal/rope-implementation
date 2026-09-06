@@ -23,9 +23,8 @@ MODEL_CHOICES = [
 DEFAULT_MODEL = MODEL_CHOICES[1]
 
 _cache: dict[str, Any] = {"name": None, "model": None, "tokenizer": None}
-
-
 _config_cache: dict[str, Any] = {}
+_tokenizer_cache: dict[str, Any] = {}
 
 
 def random_matrix(seq_len: int, dim: int, seed: int = 42) -> np.ndarray:
@@ -137,12 +136,40 @@ def get_model_head_dim(model_name: str) -> int:
     return get_model_dimensions(model_name)[2]
 
 
+def get_model_sequence_info(model_name: str, sentence: str) -> tuple[int, int]:
+    """Return token count and usable context limit without loading model weights."""
+    config = _get_model_config(model_name)
+    configured_limit = getattr(config, "max_position_embeddings", None)
+    context_limit = min(
+        MAX_SEQ_LEN,
+        int(configured_limit) if configured_limit else MAX_SEQ_LEN,
+    )
+    if model_name not in _tokenizer_cache:
+        try:
+            from transformers import AutoTokenizer
+        except ImportError as exc:
+            raise RuntimeError("Real-model mode needs `transformers`.") from exc
+        _tokenizer_cache[model_name] = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _tokenizer_cache[model_name]
+    text = sentence.strip() or "RoPE rotates query and key vectors."
+    encoded = tokenizer(
+        text,
+        truncation=True,
+        max_length=context_limit,
+        add_special_tokens=True,
+    )
+    return len(encoded["input_ids"]), context_limit
+
+
 def get_model(model_name: str):
     """Load tokenizer + causal LM on CPU; cache the last selection."""
     torch, AutoModelForCausalLM, AutoTokenizer = _require_hf()
     if _cache["name"] == model_name and _cache["model"] is not None:
         return _cache["model"], _cache["tokenizer"]
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = _tokenizer_cache.get(model_name)
+    if tokenizer is None:
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _tokenizer_cache[model_name] = tokenizer
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float32,
@@ -207,18 +234,23 @@ def _hf_rotary(q, k, rotary, position_ids, torch):
 def extract_from_model(model_name: str, sentence: str) -> dict[str, Any]:
     torch, _, _ = _require_hf()
     model, tokenizer = get_model(model_name)
+    cfg = model.config
+    configured_limit = getattr(cfg, "max_position_embeddings", None)
+    context_limit = min(
+        MAX_SEQ_LEN,
+        int(configured_limit) if configured_limit else MAX_SEQ_LEN,
+    )
     text = sentence.strip() or "RoPE rotates query and key vectors."
     encoded = tokenizer(
         text,
         return_tensors="pt",
         truncation=True,
-        max_length=MAX_SEQ_LEN,
+        max_length=context_limit,
         add_special_tokens=True,
     )
     input_ids = encoded["input_ids"]
     tokens = tokenizer.convert_ids_to_tokens(input_ids[0].tolist())
     backbone = _backbone(model)
-    cfg = model.config
     n_heads = int(cfg.num_attention_heads)
     n_kv = int(getattr(cfg, "num_key_value_heads", n_heads))
     hidden_size = int(cfg.hidden_size)

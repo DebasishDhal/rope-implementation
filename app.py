@@ -15,6 +15,7 @@ from src.extract import (
     expand_kv_heads,
     extract_from_model,
     get_model_dimensions,
+    get_model_sequence_info,
     random_qk,
     select_head,
 )
@@ -91,6 +92,22 @@ def _safe_slider_max(n: int) -> int:
     return max(int(n), 1)
 
 
+def _head_mapping_markdown(total_dim: int, n_heads: int, head_dim: int) -> str:
+    rows = [
+        "**Projected Q/K dimensions handled by each query head**",
+        "",
+        "These are output dimensions after `q_proj`/`k_proj`; RoPE uses the local dimensions within each head.",
+        "",
+        "| Head | Projected dimensions |",
+        "|---:|---:|",
+    ]
+    for head_index in range(n_heads):
+        start = head_index * head_dim
+        end = min(start + head_dim - 1, total_dim - 1)
+        rows.append(f"| {head_index} | `{start}–{end}` |")
+    return "\n".join(rows)
+
+
 def update_dimension(source: str, model_name: str):
     if source.startswith("Random"):
         return (
@@ -98,6 +115,7 @@ def update_dimension(source: str, model_name: str):
             gr.update(value=32),
             gr.update(value=1),
             gr.update(value=32),
+            _head_mapping_markdown(32, 1, 32),
         )
     try:
         total_dim, n_heads, head_dim = get_model_dimensions(model_name)
@@ -112,9 +130,37 @@ def update_dimension(source: str, model_name: str):
             gr.update(value=total_dim),
             gr.update(value=n_heads),
             gr.update(value=head_dim),
+            _head_mapping_markdown(total_dim, n_heads, head_dim),
         )
     except Exception:
+        return gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
+
+
+def update_sequence_length(source: str, model_name: str, sentence: str):
+    if source.startswith("Random"):
+        return gr.update(minimum=1, maximum=MAX_SEQ_LEN, value=16, interactive=True)
+    try:
+        token_count, context_limit = get_model_sequence_info(model_name, sentence)
+        return gr.update(
+            minimum=1,
+            maximum=max(1, context_limit),
+            value=token_count,
+            interactive=False,
+        )
+    except Exception:
+        return gr.update()
+
+
+def update_random_dimension_display(source: str, dim: int):
+    if not source.startswith("Random"):
         return gr.update(), gr.update(), gr.update(), gr.update()
+    random_dim = max(4, int(dim))
+    return (
+        gr.update(value=random_dim),
+        gr.update(value=1),
+        gr.update(value=random_dim),
+        _head_mapping_markdown(random_dim, 1, random_dim),
+    )
 
 
 def compute(
@@ -275,7 +321,7 @@ Shaw-style relative attention (`q_m^T k_n + b_{m-n}`) is a third, learned-bias m
 def toggle_source(source: str):
     is_random = source.startswith("Random")
     return (
-        gr.update(visible=is_random),
+        gr.update(visible=True, interactive=is_random),
         gr.update(visible=True, interactive=is_random),
         gr.update(visible=is_random),
         gr.update(visible=not is_random),
@@ -313,7 +359,7 @@ with gr.Blocks(title="RoPE Explorer") as demo:
                     visible=False,
                 )
             with gr.Row():
-                seq_len = gr.Slider(2, MAX_SEQ_LEN, value=16, step=1, label="Sequence length")
+                seq_len = gr.Slider(1, MAX_SEQ_LEN, value=16, step=1, label="Sequence length")
                 dim = gr.Slider(4, 128, value=32, step=2, label="Dimension (even; per attention head)")
                 seed = gr.Number(value=42, label="Seed", precision=0)
             with gr.Row():
@@ -325,6 +371,7 @@ with gr.Blocks(title="RoPE Explorer") as demo:
                 "RoPE rotates each query/key head separately, so its Dimension slider uses "
                 "the per-head value, not the model's total dimension."
             )
+            head_mapping = gr.Markdown(_head_mapping_markdown(32, 1, 32))
             base = gr.Number(
                 value=10000,
                 label="RoPE base (overridden by config.rope_theta for real models)",
@@ -374,12 +421,32 @@ with gr.Blocks(title="RoPE Explorer") as demo:
     source.change(
         update_dimension,
         inputs=[source, model_name],
-        outputs=[dim, total_dim, attention_heads, head_dim],
+        outputs=[dim, total_dim, attention_heads, head_dim, head_mapping],
+    )
+    source.change(
+        update_sequence_length,
+        inputs=[source, model_name, sentence],
+        outputs=[seq_len],
     )
     model_name.change(
         update_dimension,
         inputs=[source, model_name],
-        outputs=[dim, total_dim, attention_heads, head_dim],
+        outputs=[dim, total_dim, attention_heads, head_dim, head_mapping],
+    )
+    model_name.change(
+        update_sequence_length,
+        inputs=[source, model_name, sentence],
+        outputs=[seq_len],
+    )
+    sentence.change(
+        update_sequence_length,
+        inputs=[source, model_name, sentence],
+        outputs=[seq_len],
+    )
+    dim.change(
+        update_random_dimension_display,
+        inputs=[source, dim],
+        outputs=[total_dim, attention_heads, head_dim, head_mapping],
     )
 
     bulk_inputs = [state, which, head, mod_2pi]
