@@ -1,5 +1,7 @@
 gradio==6.26.0
-
 numpy>=2.0,<2.3
-spaces==0.51.3
 plotly==7.0.0
+spaces==0.51.3
+transformers>=4.44.0
+accelerate>=0.34.0
+torch>=2.2.0
