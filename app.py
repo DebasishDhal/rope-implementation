@@ -14,7 +14,7 @@ from src.extract import (
     MODEL_CHOICES,
     expand_kv_heads,
     extract_from_model,
-    get_model_head_dim,
+    get_model_dimensions,
     random_qk,
     select_head,
 )
@@ -93,18 +93,28 @@ def _safe_slider_max(n: int) -> int:
 
 def update_dimension(source: str, model_name: str):
     if source.startswith("Random"):
-        return gr.update(minimum=4, maximum=128, value=32, step=2, interactive=True)
+        return (
+            gr.update(minimum=4, maximum=128, value=32, step=2, interactive=True),
+            gr.update(value=32),
+            gr.update(value=1),
+            gr.update(value=32),
+        )
     try:
-        model_dim = get_model_head_dim(model_name)
-        return gr.update(
-            minimum=4,
-            maximum=max(128, model_dim),
-            value=model_dim,
-            step=2,
-            interactive=False,
+        total_dim, n_heads, head_dim = get_model_dimensions(model_name)
+        return (
+            gr.update(
+                minimum=4,
+                maximum=max(128, head_dim),
+                value=head_dim,
+                step=2,
+                interactive=False,
+            ),
+            gr.update(value=total_dim),
+            gr.update(value=n_heads),
+            gr.update(value=head_dim),
         )
     except Exception:
-        return gr.update()
+        return gr.update(), gr.update(), gr.update(), gr.update()
 
 
 def compute(
@@ -306,6 +316,15 @@ with gr.Blocks(title="RoPE Explorer") as demo:
                 seq_len = gr.Slider(2, MAX_SEQ_LEN, value=16, step=1, label="Sequence length")
                 dim = gr.Slider(4, 128, value=32, step=2, label="Dimension (even; per attention head)")
                 seed = gr.Number(value=42, label="Seed", precision=0)
+            with gr.Row():
+                total_dim = gr.Number(value=32, label="Total dimension", precision=0, interactive=False)
+                attention_heads = gr.Number(value=1, label="Attention heads", precision=0, interactive=False)
+                head_dim = gr.Number(value=32, label="Dimension per attention head", precision=0, interactive=False)
+            gr.Markdown(
+                "**Why these numbers differ:** `total dimension = attention heads × dimension per head`. "
+                "RoPE rotates each query/key head separately, so its Dimension slider uses "
+                "the per-head value, not the model's total dimension."
+            )
             base = gr.Number(
                 value=10000,
                 label="RoPE base (overridden by config.rope_theta for real models)",
@@ -355,12 +374,12 @@ with gr.Blocks(title="RoPE Explorer") as demo:
     source.change(
         update_dimension,
         inputs=[source, model_name],
-        outputs=[dim],
+        outputs=[dim, total_dim, attention_heads, head_dim],
     )
     model_name.change(
         update_dimension,
         inputs=[source, model_name],
-        outputs=[dim],
+        outputs=[dim, total_dim, attention_heads, head_dim],
     )
 
     bulk_inputs = [state, which, head, mod_2pi]

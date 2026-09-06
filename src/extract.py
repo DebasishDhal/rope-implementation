@@ -108,20 +108,33 @@ def _require_hf():
     return torch, AutoModelForCausalLM, AutoTokenizer
 
 
-def get_model_head_dim(model_name: str) -> int:
-    """Return the Q/K dimension per attention head without loading model weights."""
+def _get_model_config(model_name: str):
     if model_name not in _config_cache:
         try:
             from transformers import AutoConfig
         except ImportError as exc:
             raise RuntimeError("Real-model mode needs `transformers`.") from exc
         _config_cache[model_name] = AutoConfig.from_pretrained(model_name)
+    return _config_cache[model_name]
 
-    config = _config_cache[model_name]
+
+def get_model_dimensions(model_name: str) -> tuple[int, int, int]:
+    """Return total hidden size, attention heads, and per-head Q/K size."""
+    config = _get_model_config(model_name)
+    total_dim = int(config.hidden_size)
+    n_heads = int(config.num_attention_heads)
     configured_head_dim = getattr(config, "head_dim", None)
-    if configured_head_dim is not None:
-        return int(configured_head_dim)
-    return int(config.hidden_size) // int(config.num_attention_heads)
+    head_dim = (
+        int(configured_head_dim)
+        if configured_head_dim is not None
+        else total_dim // n_heads
+    )
+    return total_dim, n_heads, head_dim
+
+
+def get_model_head_dim(model_name: str) -> int:
+    """Return the Q/K dimension per attention head without loading model weights."""
+    return get_model_dimensions(model_name)[2]
 
 
 def get_model(model_name: str):

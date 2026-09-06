@@ -27,7 +27,8 @@ learning notes only and are **not** imported by the app.
 1. **Random matrix** — sample even-width Q (and K) tensors, apply numpy RoPE,
    inspect heatmaps, pairwise 2D rotation, `QK^T`, and additive sinusoidal PE.
 2. **Real model** — lazy-load an ungated Llama-like checkpoint (default
-   `HuggingFaceTB/SmolLM2-135M`), take `embed_tokens`, first-layer `q_proj` /
+   `HuggingFaceTB/SmolLM2-135M`; `HuggingFaceM4/tiny-random-LlamaForCausalLM`
+   is included for a very small test model), take `embed_tokens`, first-layer `q_proj` /
    `k_proj` (GQA-aware), and compare educational numpy RoPE (`llama` pairing)
    to the model's `rotary_emb`. No Hugging Face token is required. Gated models
    are not used.
