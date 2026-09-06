@@ -14,6 +14,7 @@ from src.extract import (
     MODEL_CHOICES,
     expand_kv_heads,
     extract_from_model,
+    get_model_head_dim,
     random_qk,
     select_head,
 )
@@ -88,6 +89,22 @@ def gpu_test():
 def _safe_slider_max(n: int) -> int:
     """Gradio sliders need max > min; keep a one-step range even at edge cases."""
     return max(int(n), 1)
+
+
+def update_dimension(source: str, model_name: str):
+    if source.startswith("Random"):
+        return gr.update(minimum=4, maximum=128, value=32, step=2, interactive=True)
+    try:
+        model_dim = get_model_head_dim(model_name)
+        return gr.update(
+            minimum=4,
+            maximum=max(128, model_dim),
+            value=model_dim,
+            step=2,
+            interactive=False,
+        )
+    except Exception:
+        return gr.update()
 
 
 def compute(
@@ -249,7 +266,7 @@ def toggle_source(source: str):
     is_random = source.startswith("Random")
     return (
         gr.update(visible=is_random),
-        gr.update(visible=is_random),
+        gr.update(visible=True, interactive=is_random),
         gr.update(visible=is_random),
         gr.update(visible=not is_random),
         gr.update(visible=not is_random),
@@ -287,8 +304,8 @@ with gr.Blocks(title="RoPE Explorer") as demo:
                 )
             with gr.Row():
                 seq_len = gr.Slider(2, MAX_SEQ_LEN, value=16, step=1, label="Sequence length")
-                dim = gr.Slider(4, 128, value=32, step=2, label="Dimension (even)")
-                seed = gr.Number(value=0, label="Seed", precision=0)
+                dim = gr.Slider(4, 128, value=32, step=2, label="Dimension (even; per attention head)")
+                seed = gr.Number(value=42, label="Seed", precision=0)
             base = gr.Number(
                 value=10000,
                 label="RoPE base (overridden by config.rope_theta for real models)",
@@ -334,6 +351,16 @@ with gr.Blocks(title="RoPE Explorer") as demo:
         toggle_source,
         inputs=[source],
         outputs=[seq_len, dim, seed, sentence, model_name],
+    )
+    source.change(
+        update_dimension,
+        inputs=[source, model_name],
+        outputs=[dim],
+    )
+    model_name.change(
+        update_dimension,
+        inputs=[source, model_name],
+        outputs=[dim],
     )
 
     bulk_inputs = [state, which, head, mod_2pi]

@@ -11,20 +11,24 @@ import numpy as np
 
 from src.rope import apply_rope
 
-MAX_SEQ_LEN = 64
+MAX_SEQ_LEN = 2048
 
 # Ungated Llama-like checkpoints (q_proj / k_proj + rotary). No HF token required.
 MODEL_CHOICES = [
+    "HuggingFaceM4/tiny-random-LlamaForCausalLM",
     "HuggingFaceTB/SmolLM2-135M",
     "Qwen/Qwen2.5-0.5B-Instruct",
     "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
 ]
-DEFAULT_MODEL = MODEL_CHOICES[0]
+DEFAULT_MODEL = MODEL_CHOICES[1]
 
 _cache: dict[str, Any] = {"name": None, "model": None, "tokenizer": None}
 
 
-def random_matrix(seq_len: int, dim: int, seed: int = 0) -> np.ndarray:
+_config_cache: dict[str, Any] = {}
+
+
+def random_matrix(seq_len: int, dim: int, seed: int = 42) -> np.ndarray:
     if dim % 2 != 0:
         raise ValueError(f"dim must be even for RoPE, got {dim}")
     seq_len = int(np.clip(seq_len, 1, MAX_SEQ_LEN))
@@ -35,7 +39,7 @@ def random_matrix(seq_len: int, dim: int, seed: int = 0) -> np.ndarray:
 def random_qk(
     seq_len: int,
     dim: int,
-    seed: int = 0,
+    seed: int = 42,
     base: float = 10000.0,
 ) -> dict[str, Any]:
     q = random_matrix(seq_len, dim, seed=seed)
@@ -102,6 +106,22 @@ def _require_hf():
             "Install them or use Random matrix mode."
         ) from exc
     return torch, AutoModelForCausalLM, AutoTokenizer
+
+
+def get_model_head_dim(model_name: str) -> int:
+    """Return the Q/K dimension per attention head without loading model weights."""
+    if model_name not in _config_cache:
+        try:
+            from transformers import AutoConfig
+        except ImportError as exc:
+            raise RuntimeError("Real-model mode needs `transformers`.") from exc
+        _config_cache[model_name] = AutoConfig.from_pretrained(model_name)
+
+    config = _config_cache[model_name]
+    configured_head_dim = getattr(config, "head_dim", None)
+    if configured_head_dim is not None:
+        return int(configured_head_dim)
+    return int(config.hidden_size) // int(config.num_attention_heads)
 
 
 def get_model(model_name: str):
