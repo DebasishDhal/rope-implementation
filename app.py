@@ -77,6 +77,47 @@ Shaw relative attention (learned bias `b_{m-n}` on scores) is a **different**
 mechanism and is not computed here.
 """
 
+BULK_FORMULAS_MD = r"""
+### What each Q/K matrix entry means
+
+The selected heatmap entry is `X[h, k, j]`, where `X` is either **Q** or **K**, `h` is
+the attention-head index, `k` is the token position, and `j` is the dimension within
+that head.
+
+For a real model, the first-layer projections calculate each entry as:
+
+$$
+Q^{before}_{k,h,j} = \left(H_k W_Q + b_Q\right)_{h d + j},\qquad
+K^{before}_{k,h,j} = \left(H_k W_K + b_K\right)_{h d + j}
+$$
+
+Here `H_k` is the token's hidden vector, `d` is the dimension per head, and `W_Q`,
+`W_K` are the model's query/key projection weights. In random-matrix mode, the initial
+entries are sampled directly: `Q before ~ N(0, 1)` and `K before ~ N(0, 1)` using
+independent seeds.
+
+RoPE then transforms either matrix using
+
+$$
+\theta(k,i) = k\,base^{-2i/d}
+$$
+
+For the real-model Llama layout, the paired dimensions are `(i, i+d/2)`:
+
+$$
+X^{after}_{h,k,i} = X^{before}_{h,k,i}\cos\theta -
+X^{before}_{h,k,i+d/2}\sin\theta
+$$
+$$
+X^{after}_{h,k,i+d/2} = X^{before}_{h,k,i}\sin\theta +
+X^{before}_{h,k,i+d/2}\cos\theta
+$$
+
+where `X` means either **Q** or **K**. Random-matrix mode uses adjacent pairs
+`(2i, 2i+1)` instead. Therefore, **Before** contains projected or sampled values,
+**After** contains rotated values, and **Delta = After − Before**.
+"""
+
 PLACEHOLDER = go.Figure().update_layout(
     title="Run **Compute** on the Setup tab first",
     template="plotly_white",
@@ -381,6 +422,7 @@ with gr.Blocks(title="RoPE Explorer") as demo:
             head = gr.Slider(minimum=0, maximum=2, step=1, value=0, label="Head index (real models)")
 
         with gr.Tab("Bulk changes"):
+            gr.Markdown(BULK_FORMULAS_MD)
             which = gr.Radio(["Q", "K"], value="Q", label="Tensor")
             mod_2pi = gr.Checkbox(False, label="θ heatmap: wrap mod 2π")
             bulk_main = gr.Plot(label="Before / after / delta")

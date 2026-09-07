@@ -59,13 +59,16 @@ def bulk_before_after_delta(before: np.ndarray, after: np.ndarray, tokens=None) 
             go.Heatmap(
                 z=mat,
                 showscale=(i == 3),
-                hovertemplate="token=%{y}<br>dim=%{x}<br>z=%{z:.4f}<extra></extra>",
+                colorbar=dict(title="matrix value") if i == 3 else None,
+                hovertemplate="token position k=%{y}<br>dimension index j=%{x}<br>value=%{z:.4f}<extra></extra>",
             ),
             row=1,
             col=i,
         )
+        fig.update_xaxes(title_text="dimension index j (within selected head)", row=1, col=i)
+        fig.update_yaxes(title_text="token position k", row=1, col=i)
         fig.update_yaxes(autorange="reversed", row=1, col=i)
-    fig.update_layout(template="plotly_white", height=400, margin=dict(t=60))
+    fig.update_layout(template="plotly_white", height=430, margin=dict(t=60, b=65))
     return fig
 
 
@@ -78,10 +81,10 @@ def norms_and_cosine(before: np.ndarray, after: np.ndarray, tokens=None) -> go.F
     fig.add_trace(go.Scatter(x=xs, y=nb, name="before", mode="lines+markers"), row=1, col=1)
     fig.add_trace(go.Scatter(x=xs, y=na, name="after", mode="lines+markers"), row=1, col=1)
     fig.add_trace(go.Bar(x=xs, y=cos, name="cosine", showlegend=False), row=1, col=2)
-    fig.update_xaxes(title_text="token", row=1, col=1)
-    fig.update_xaxes(title_text="token", row=1, col=2)
-    fig.update_yaxes(title_text="L2", row=1, col=1)
-    fig.update_yaxes(title_text="cosine", range=[min(0.0, float(np.min(cos)) - 0.05), 1.02], row=1, col=2)
+    fig.update_xaxes(title_text="token position k", row=1, col=1)
+    fig.update_xaxes(title_text="token position k", row=1, col=2)
+    fig.update_yaxes(title_text="L2 norm of Q/K vector", row=1, col=1)
+    fig.update_yaxes(title_text="cosine similarity (before, after)", range=[min(0.0, float(np.min(cos)) - 0.05), 1.02], row=1, col=2)
     fig.update_layout(template="plotly_white", height=380, barmode="group")
     return fig
 
@@ -97,13 +100,13 @@ def theta_heatmap(seq_len: int, dim: int, base: float, mod_2pi: bool = False) ->
     fig = go.Figure(
         data=go.Heatmap(
             z=z,
-            colorbar=dict(title="radians"),
+            colorbar=dict(title="rotation angle θ (radians)"),
             hovertemplate="token k=%{y}<br>pair i=%{x}<br>θ=%{z:.4f}<extra></extra>",
         )
     )
     fig.update_layout(
         title=title,
-        xaxis_title="pair index i",
+        xaxis_title="pair index i (dimension pair)",
         yaxis_title="token position k",
         yaxis=dict(autorange="reversed"),
         template="plotly_white",
@@ -117,8 +120,8 @@ def frequency_strip(dim: int, base: float) -> go.Figure:
     fig = go.Figure(data=go.Bar(x=list(range(len(omega))), y=omega, name="ω_i"))
     fig.update_layout(
         title="Pair frequencies ω_i (pair 0 is fastest)",
-        xaxis_title="pair index i",
-        yaxis_title="ω",
+        xaxis_title="pair index i (dimension pair)",
+        yaxis_title="frequency ω_i (radians per position)",
         yaxis_type="log",
         template="plotly_white",
         height=280,
