@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from html import escape
+
 import numpy as np
 import plotly.graph_objects as go
 import gradio as gr
@@ -319,9 +321,21 @@ def update_individual(data, which, head, token, pair, sweep):
     return table, rot, sweep_fig
 
 
+def _attention_context_markdown(data: dict | None) -> str:
+    if not data:
+        return "Compute on the Setup tab to see the sentence and tokenization."
+    text = data.get("text") or "Random matrix mode does not use a sentence."
+    token_lines = " | ".join(f"{i}: {token}" for i, token in enumerate(data["tokens"]))
+    return (
+        "### Input sentence and tokens\n\n"
+        f"**Sentence:** <code>{escape(str(text))}</code>\n\n"
+        f"**Tokenized form (index: token):** <code>{escape(token_lines)}</code>"
+    )
+
+
 def update_attention(data, head, query_token):
     if not data:
-        return PLACEHOLDER, PLACEHOLDER, ""
+        return PLACEHOLDER, PLACEHOLDER, "", _attention_context_markdown(None)
     q_b = select_head(data["q_before"], int(head))
     q_a = select_head(data["q_after"], int(head))
     k_b_all = expand_kv_heads(data["k_before"], data["n_q_heads"])
@@ -336,7 +350,12 @@ def update_attention(data, head, query_token):
         "because `R(m)^T R(n) = R(n−m)`: the score depends on the position difference, "
         "not on absolute indices alone."
     )
-    return attention_heatmaps(sb, sa), attention_bars(sb[qt], sa[qt], qt), note
+    return (
+        attention_heatmaps(sb, sa, tokens=data["tokens"]),
+        attention_bars(sb[qt], sa[qt], qt),
+        note,
+        _attention_context_markdown(data),
+    )
 
 
 def update_compare(data):
@@ -440,10 +459,31 @@ with gr.Blocks(title="RoPE Explorer") as demo:
             sweep_plot = gr.Plot()
 
         with gr.Tab("Attention effect"):
+            attention_context = gr.Markdown(
+                "Compute on the Setup tab to see the sentence and tokenization."
+            )
             query_token = gr.Slider(0, 15, step=1, value=0, label="Query token")
             attn_heat = gr.Plot()
             attn_bar = gr.Plot()
             attn_note = gr.Markdown()
+            gr.Markdown(
+                """
+### How to read an attention score
+
+Each heatmap cell is the raw dot product `Q_query · K_key` for the query token on
+the y-axis and key token on the x-axis:
+
+- **Zero** means the two vectors are orthogonal, so this query/key pair has no directional match.
+- **Positive** means the vectors point partly in the same direction, indicating a compatible match.
+- **Negative** means the vectors point partly in opposite directions, indicating an incompatible match.
+- **Magnitude** shows how strong the alignment or opposition is. Larger absolute values mean a stronger raw signal.
+
+These are raw, unnormalized scores, not probabilities. Compare scores within the
+same query row; the model would apply softmax across that row to turn them into
+relative attention weights. Vector lengths also affect the magnitude, so a larger
+score does not represent a universal threshold of importance.
+"""
+            )
 
         with gr.Tab("Compare to additive PE"):
             pe_heat = gr.Plot()
@@ -502,7 +542,7 @@ with gr.Blocks(title="RoPE Explorer") as demo:
         ctrl.change(update_individual, inputs=ind_inputs, outputs=ind_outputs)
 
     attn_inputs = [state, head, query_token]
-    attn_outputs = [attn_heat, attn_bar, attn_note]
+    attn_outputs = [attn_heat, attn_bar, attn_note, attention_context]
     for ctrl in attn_inputs:
         ctrl.change(update_attention, inputs=attn_inputs, outputs=attn_outputs)
 

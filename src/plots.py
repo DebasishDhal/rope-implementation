@@ -239,14 +239,32 @@ def position_sweep(
     return fig
 
 
-def attention_heatmaps(scores_before: np.ndarray, scores_after: np.ndarray) -> go.Figure:
+def attention_heatmaps(
+    scores_before: np.ndarray,
+    scores_after: np.ndarray,
+    tokens=None,
+) -> go.Figure:
     fig = make_subplots(rows=1, cols=2, subplot_titles=["QKᵀ without RoPE", "QKᵀ with RoPE"])
+    seq_len = scores_before.shape[0]
+    row_step = max(1, int(np.ceil(seq_len / 64)))
+    indices = np.arange(0, seq_len, row_step)
+    labels = [str(tokens[i]) if tokens is not None else f"token {i}" for i in indices]
+    customdata = np.empty((len(indices), len(indices), 2), dtype=object)
+    customdata[:, :, 0] = np.asarray(labels)[:, None]
+    customdata[:, :, 1] = np.asarray(labels)[None, :]
     for i, mat in enumerate([scores_before, scores_after], start=1):
         fig.add_trace(
             go.Heatmap(
-                z=downsample(mat),
+                z=np.asarray(mat)[::row_step, ::row_step],
+                x=indices,
+                y=indices,
+                customdata=customdata,
                 showscale=(i == 2),
-                hovertemplate="query=%{y}<br>key=%{x}<br>score=%{z:.4f}<extra></extra>",
+                hovertemplate=(
+                    "query position k=%{y}<br>query token=%{customdata[0]}<br>"
+                    "key position k=%{x}<br>key token=%{customdata[1]}<br>"
+                    "Q·K score=%{z:.4f}<extra></extra>"
+                ),
             ),
             row=1,
             col=i,

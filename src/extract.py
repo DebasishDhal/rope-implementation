@@ -20,7 +20,7 @@ MODEL_CHOICES = [
     "Qwen/Qwen2.5-0.5B-Instruct",
     "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
 ]
-DEFAULT_MODEL = MODEL_CHOICES[1]
+DEFAULT_MODEL = MODEL_CHOICES[0]
 
 _cache: dict[str, Any] = {"name": None, "model": None, "tokenizer": None}
 _config_cache: dict[str, Any] = {}
@@ -71,6 +71,7 @@ def _pack_tensors(
     checksum: float | None,
     source: str,
     model_name: str | None,
+    text: str | None = None,
     q_after_model: np.ndarray | None = None,
     k_after_model: np.ndarray | None = None,
 ) -> dict[str, Any]:
@@ -92,6 +93,7 @@ def _pack_tensors(
         "checksum": checksum,
         "source": source,
         "model_name": model_name,
+        "text": text,
     }
 
 
@@ -296,6 +298,7 @@ def extract_from_model(model_name: str, sentence: str) -> dict[str, Any]:
         checksum=checksum,
         source="model",
         model_name=model_name,
+        text=text,
         q_after_model=q_model_np,
         k_after_model=k_model_np,
     )
